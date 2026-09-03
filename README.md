@@ -10,15 +10,30 @@
 
 ## 🔒 Confidential Production SaaS Project
 
-> **Project Scope:** Multi-tenant SaaS platform built for multi-outlet restaurant chains, cloud kitchens, and dining establishments — covering recipe BOM formulation, live table management, Kitchen Order Ticket (KOT) routing, high-speed POS billing, automated ingredient inventory depletion, central kitchen logistics, customer loyalty, and financial accounting.
+> **Project Scope:** Multi-tenant SaaS platform built for multi-outlet restaurant chains, cloud kitchens, and dining establishments — covering recipe BOM formulation, live table management, Kitchen Order Ticket (KOT) routing, POS billing, automated ingredient inventory depletion, central kitchen logistics, customer loyalty, and financial accounting.
 
-This repository contains an **anonymized technical case study** of a production multi-tenant Food & Beverage (F&B) SaaS ERP.
+This repository documents my engineering work and system architecture on a multi-tenant Food & Beverage (F&B) SaaS ERP.
 
-Specific client identifiers, database credentials, production data, and proprietary business configurations have been removed per confidentiality agreements.
-
-The documentation focuses on **system architecture, data models, kitchen workflows, and engineering problem-solving**.
+Specific client identifiers, database credentials, production data, and proprietary business configurations have been removed per confidentiality obligations.
 
 > See [DISCLAIMER.md](./DISCLAIMER.md) for full confidentiality notice.
+
+---
+
+## ⚡ Engineering Snapshot (60-Second Overview)
+
+DineFlow is a multi-tenant restaurant SaaS platform focused on transactional POS operations, recipe-driven inventory depletion, kitchen automation, and day-end financial reconciliation.
+
+```
+Key Engineering Focus Areas:
+• Multi-tenant data isolation using Eloquent Global Scopes (tenant_id & outlet_id)
+• Transaction-safe POS checkout and mathematical split-billing validation
+• Pessimistic locking (SELECT ... FOR UPDATE) for concurrent ingredient inventory updates
+• Event-driven Kitchen Order Ticket (KOT) station routing (Food → Kitchen, Drinks → Bar)
+• Recipe BOM (Bill of Materials) linked to automated raw material deduction & COGS calculation
+• Day-end shift close, blind cash drawer reconciliation, and automated double-entry JV posting
+• Granular Role-Based Access Control (RBAC) across floor, kitchen, and administrative personnel
+```
 
 ---
 
@@ -26,8 +41,8 @@ The documentation focuses on **system architecture, data models, kitchen workflo
 
 1. [Business Context & Problem Statement](#-1-business-context--problem-statement)
 2. [Multi-Tenant SaaS Architecture](#-2-multi-tenant-saas-architecture)
-3. [Implementation Status Matrix](#-3-implementation-status-matrix)
-4. [Engineering Highlights](#-4-engineering-highlights)
+3. [Engineering Decisions & Trade-offs](#-3-engineering-decisions--trade-offs)
+4. [Implementation Status Matrix](#-4-implementation-status-matrix)
 5. [Menu Engineering & Recipe BOM Engine](#-5-menu-engineering--recipe-bom-engine)
 6. [Table Management & Order Routing (KOT / KDS)](#-6-table-management--order-routing-kot--kds)
 7. [POS & Split-Billing Engine](#-7-pos--split-billing-engine)
@@ -109,7 +124,20 @@ graph TB
 
 ---
 
-## 🚦 3. Implementation Status Matrix
+## ⚖️ 3. Engineering Decisions & Trade-offs
+
+| Architectural Decision | Chosen Approach | Rationale & Trade-offs |
+|---|---|---|
+| **Multi-Tenancy Model** | Shared Database with Row-Level Scoping (`tenant_id`, `outlet_id`) | Significantly lower infrastructure and operational overhead compared to multi-database setups, while maintaining strict isolation via centralized Global Scopes. |
+| **Tenant Query Isolation** | Laravel Global Eloquent Scopes | Eliminates manual `where('tenant_id', ...)` filters in controller queries, preventing accidental cross-tenant data leaks. |
+| **Concurrent Inventory Depletion** | Row-Level Pessimistic Locking (`SELECT ... FOR UPDATE`) | Guarantees atomic ingredient batch deductions across concurrent POS terminals, avoiding race conditions and negative inventory balances. |
+| **Billing Consistency** | Database Transactions with Balance Assertion | Ensures order closure, payment receipt logging, and ingredient stock deductions commit together or roll back entirely. |
+| **Kitchen Communication** | Event-Driven Station Dispatch | Decouples POS order processing from kitchen display rendering, routing food items to Kitchen KDS and drinks to Bar KDS independently. |
+| **UI Architecture** | Blade Templates + AJAX + Vanilla JS | Optimal for low-latency in-restaurant POS terminals and touchscreens without the deployment complexity of separate single-page apps (SPAs). |
+
+---
+
+## 🚦 4. Implementation Status Matrix
 
 | Module / Architectural Component | Status | Implementation Details |
 |---|:---:|---|
@@ -117,7 +145,7 @@ graph TB
 | **Recipe BOM & Dish Formulation** | ✅ **Implemented** | Item-ingredient mapping, unit conversion, portion shrinkage, and food cost % |
 | **Table & Floor Plan State Machine** | ✅ **Implemented** | Interactive table states (`Vacant`, `Occupied`, `Billed`, `Reserved`) with merging |
 | **Kitchen Order Routing (KOT / KDS)** | ✅ **Implemented** | Event-driven station routing (Food to Kitchen, Drinks to Bar) with status updates |
-| **High-Speed POS & Split Billing** | ✅ **Implemented** | Multi-tender checkout, $N$-way equal split, item-based split, and thermal print |
+| **POS & Split Billing Engine** | ✅ **Implemented** | Multi-tender checkout, $N$-way equal split, item-based split, and thermal print |
 | **Automated Inventory Depletion** | ✅ **Implemented** | Atomic raw ingredient deduction on bill settlement with batch locking |
 | **Customer Loyalty & Points Policy** | ✅ **Implemented** | Point accrual rules, tiered membership, and checkout redemption discounts |
 | **Day-End Shift Close & Cash Audit** | ✅ **Implemented** | Blind cash counting, expected vs. actual variance tracking, and Z-report |
@@ -125,18 +153,6 @@ graph TB
 | **Multi-Tier RBAC & Permissions** | ✅ **Implemented** | Granular role matrix for cashier, waiter, chef, manager, and tenant admin |
 | **Central Kitchen Requisition & Transfer** | 🟡 **Core Complete** | Outlet requisition, batch prep dispatch, and GRN receiving workflows |
 | **Consolidated Financial Reports** | 🟡 **Core Complete** | P&L, Trial Balance, Daily Sales Summary, and Dish Margin Reports |
-
----
-
-## ⚙️ 4. Engineering Highlights
-
-- **Tenant Data Isolation:** Implemented Laravel Global Scopes across Eloquent models to enforce strict `tenant_id` and `outlet_id` filtering on all read/write queries.
-- **Pessimistic Locking on Peak Rush:** Utilized `SELECT ... FOR UPDATE` row-level database locks during bill settlement to prevent concurrent race conditions on shared ingredient batches.
-- **Event-Driven Kitchen Synchronization:** Built an event-driven notification flow dispatching order events to specific kitchen stations (Kitchen, Grill, Bar) upon order confirmation.
-- **Mathematical Split-Billing Consistency:** Implemented transactional balance enforcement ensuring sum of split receipts exactly matches the master bill total before order closure.
-- **Automated Recipe COGS Calculation:** Linked menu items to raw ingredient Bill of Materials (BOM), enabling automated Cost of Goods Sold (COGS) computation based on FIFO ingredient costs.
-- **Cash Drawer Audit Integrity:** Designed a blind-count shift reconciliation workflow that records over/short variances and prevents backdated cash alterations.
-- **Relational Data Integrity:** Normalized schema design with foreign key constraints, database transactions, and cascade prevention across active dining tables.
 
 ---
 
@@ -154,8 +170,10 @@ Menu Item (e.g., Grilled Chicken Burger)
 ```
 
 - **Portion Control & Yields:** Accounts for raw-to-cooked shrinkage conversion factors (yield percentage).
-- **Dish Costing & Margin Analysis:** Real-time food cost calculation based on ingredient purchase prices:
-  $$\text{Food Cost \%} = \left( \frac{\text{Total Ingredient Cost}}{\text{Menu Selling Price}} \right) \times 100$$
+- **Dish Costing & Margin Analysis:** Real-time food cost calculation based on ingredient purchase costs:
+
+$$\text{Food Cost \%} = \left( \frac{\text{Total Ingredient Cost}}{\text{Menu Selling Price}} \right) \times 100$$
+
 - **Modifier & Add-on BOMs:** Add-ons (e.g., *Extra Cheese*, *Double Patty*) carry individual ingredient sub-recipes that dynamically attach to the base order line.
 
 ---
@@ -164,7 +182,7 @@ Menu Item (e.g., Grilled Chicken Burger)
 
 ### 6.1 Floor & Table Management
 
-- **Live Visual Floor Plan:** Visual representation of restaurant sections (Main Hall, Terrace, VIP, Bar).
+- **Visual Floor Plan:** Visual representation of restaurant sections (Main Hall, Terrace, VIP, Bar).
 - **Table State Machine:**
   - `🟢 Vacant` $\rightarrow$ Available for seating
   - `🟡 Occupied` $\rightarrow$ Order active, food in prep
@@ -199,7 +217,7 @@ sequenceDiagram
 
 ## 💳 7. POS & Split-Billing Engine
 
-Built for rapid checkout during high-volume dining rush hours:
+Built for rapid checkout during dining operations:
 
 - **Order Types:** Dine-In (Table-linked), Takeaway / Counter Pickup, and Direct Delivery.
 - **Flexible Bill Splitting:**
@@ -301,15 +319,15 @@ Key operational events automatically generate balanced journal vouchers:
 
 ## 💡 13. Key Engineering Challenges & Solutions
 
-### Challenge 1: Concurrent Recipe Stock Depletion on Peak Rush
-**Problem:** During high-volume dining rush hours, multiple POS terminals settle orders simultaneously. Deducting complex recipe ingredient lines concurrently risked race conditions and negative inventory balances.
+### Challenge 1: Pessimistic Locking for Concurrent Inventory Updates
+**Problem:** When multiple POS terminals settle orders simultaneously, deducting complex recipe ingredient lines concurrently risked race conditions and negative inventory balances.
 
 **Solution:** Ingredient stock deductions execute inside an atomic database transaction using row-level pessimistic locking (`SELECT ... FOR UPDATE`) on ingredient inventory records. If an ingredient has insufficient stock, the deduction logs a pending inventory variance alert rather than interrupting the cashier checkout flow.
 
 ---
 
-### Challenge 2: Real-time Kitchen Order Synchronization
-**Problem:** Order updates, item cancellations, or extra modifier additions made by waiters at the table needed to reflect on the kitchen display without full-page reloads or polling latency.
+### Challenge 2: Station-Specific Kitchen Order Routing
+**Problem:** Order updates, item cancellations, or extra modifier additions made by waiters at the table needed to reflect on the kitchen display without full-page reloads.
 
 **Solution:** Implemented an event-driven notification flow. When an order is confirmed or modified, the backend dispatches a station-specific payload to the corresponding KDS display channel, updating the kitchen queue in real time.
 
@@ -326,7 +344,9 @@ Key operational events automatically generate balanced journal vouchers:
 **Problem:** Splitting an active dining bill across multiple guests with varying payment methods (cash, card, loyalty points) could lead to rounding discrepancies or unbilled items.
 
 **Solution:** The billing engine enforces a mathematical balance check:
+
 $$\sum (\text{Split Payments}) \equiv \text{Total Bill Amount} + \text{Taxes} + \text{Service Charge} - \text{Discounts}$$
+
 The parent order is only marked settled once the sum of all child receipt ledger entries equals the master bill total.
 
 ---
@@ -335,19 +355,21 @@ The parent order is only marked settled once the sum of all child receipt ledger
 
 **Role:** Full-Stack Software Engineer (PHP / Laravel)
 
-**Key Contributions:**
+### Architecture & System Design
+- **Designed** the multi-tenant data scoping layer using Laravel global scopes and outlet-aware query constraints.
+- **Designed** the Recipe Bill of Materials (BOM) data model and automated ingredient stock depletion logic.
+- **Designed** the table state machine and visual floor plan management workflows.
 
-- Designed and implemented the tenant-scoping layer using Laravel global scopes and outlet-aware query constraints
-- Designed and built the Recipe BOM Engine and automated ingredient stock depletion logic
-- Developed the Table Management and live floor plan state machine
-- Built the KOT order routing flow and Kitchen Display System (KDS) order partitioning
-- Engineered the POS billing engine supporting multi-tender settlement and split-billing validation
-- Developed the Central Kitchen requisition, delivery challan, and inter-outlet stock transfer workflow
-- Built the Customer Loyalty points accumulation and redemption engine
-- Implemented the Day-End Shift close and cash drawer reconciliation workflow
-- Integrated automatic double-entry journal voucher generation for sales settlements and inventory COGS
-- Built the 3-layer RBAC permission system across store, kitchen, and administrative roles
-- Developed financial and operational reporting with printable PDF exports
+### Core Implementation
+- **Implemented** the POS billing engine supporting multi-tender settlement and split-billing validation.
+- **Implemented** the KOT order routing and Kitchen Display System (KDS) station partitioning.
+- **Implemented** the Day-End Shift close and blind-count cash drawer reconciliation workflow.
+- **Implemented** the customer loyalty point accrual and checkout redemption logic.
+
+### Integration & Workflows
+- **Integrated** automated double-entry journal voucher generation for POS sales settlements and inventory COGS.
+- **Integrated** the 3-layer RBAC permission system across store, kitchen, and administrative roles.
+- **Developed** central kitchen requisition, delivery challan, and inter-outlet stock transfer workflows.
 
 ---
 
